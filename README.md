@@ -6,8 +6,6 @@ A hiring manager told me: *"Don't apply through LinkedIn — email me an AI endp
 
 HireProxy lets you deploy a personal AI interview assistant that hiring managers can chat with to learn about your qualifications, experience, and technical thinking. You fill in your background once, and the AI handles the rest — answering questions naturally, staying on-topic, and giving hiring managers a real sense of who you are.
 
-**Live demo:** [hi.challon.tech](https://hi.challon.tech)
-
 ---
 
 ## Features
