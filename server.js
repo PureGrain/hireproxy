@@ -424,85 +424,95 @@ const server = http.createServer(async (req, res) => {
 
   // Mailgun inbound email webhook
   if (req.method === 'POST' && req.url === '/api/email-webhook') {
+    // Parse the request body first (need the stream before responding)
+    let fields;
     try {
-      const fields = await parseMultipart(req);
-      const sender = fields['sender'] || fields['from'] || '';
-      const subject = fields['subject'] || '';
-      const body = (fields['stripped-text'] || fields['body-plain'] || '').trim();
-
-      console.log(`Email from: ${sender} | Subject: ${subject}`);
-
-      if (!body) {
-        res.writeHead(200); res.end('OK');
-        return;
-      }
-
-      // Input length cap
-      if (body.length > 2000) {
-        await sendMailgunReply(sender, `Re: ${subject}`,
-          'Your message was too long (2000 character limit). Please send a shorter question and I\'ll be happy to help!');
-        res.writeHead(200); res.end('OK');
-        return;
-      }
-
-      // Global message cap check
-      const currentCount = getGlobalCount();
-      if (currentCount >= GLOBAL_MESSAGE_CAP) {
-        const contactMsg = CONTACT_EMAIL ? `Please contact them directly at ${CONTACT_EMAIL}` : 'Please contact them directly.';
-        await sendMailgunReply(sender, `Re: ${subject}`,
-          `This assistant has reached its conversation limit. ${contactMsg}`);
-        res.writeHead(200); res.end('OK');
-        return;
-      }
-
-      // Get conversation history for this sender
-      const convo = getEmailConversation(sender);
-      const messages = convo.messages.slice(-20);
-      messages.push({ role: 'user', content: body });
-
-      // Call Claude
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages,
-      });
-
-      const reply = response.content[0].text;
-      const inputTokens = response.usage?.input_tokens || 0;
-      const outputTokens = response.usage?.output_tokens || 0;
-      const cost = estimateCost(inputTokens, outputTokens);
-
-      // Save to conversation history
-      messages.push({ role: 'assistant', content: reply });
-      saveEmailConversation(sender, messages, convo.count + 1);
-
-      // Log to chat_log (reuse same table, ip = sender email)
-      stmtInsertChat.run(sender, body, reply, inputTokens, outputTokens, cost);
-      const count = getGlobalCount();
-      console.log(`Email reply sent | Message ${count}/${GLOBAL_MESSAGE_CAP} | tokens: ${inputTokens}+${outputTokens} | cost: $${cost.toFixed(4)}`);
-
-      // Send reply email
-      await sendMailgunReply(sender, `Re: ${subject}`, reply);
-
-      // Discord notification
-      const truncQ = body.length > 200 ? body.slice(0, 200) + '...' : body;
-      const truncA = reply.length > 300 ? reply.slice(0, 300) + '...' : reply;
-      const totalCost = db.prepare('SELECT COALESCE(SUM(cost),0) as t FROM chat_log').get().t;
-      sendDiscordNotification(
-        `**Email Interview** [${count}/${GLOBAL_MESSAGE_CAP}] | $${totalCost.toFixed(4)} total\n` +
-        `**From:** ${sender}\n` +
-        `**Q:** ${truncQ}\n` +
-        `**A:** ${truncA}\n` +
-        `_${inputTokens}+${outputTokens} tokens | $${cost.toFixed(4)}_`
-      );
-
-      res.writeHead(200); res.end('OK');
+      fields = await parseMultipart(req);
     } catch (err) {
-      console.error('Email webhook error:', err.message);
-      stmtInsertEvent.run('email_error', err.message);
-      res.writeHead(200); res.end('OK'); // Always 200 so Mailgun doesn't retry
+      console.error('Email webhook parse error:', err.message);
+      res.writeHead(200); res.end('OK');
+      return;
     }
+
+    // Return 200 IMMEDIATELY so Mailgun doesn't timeout and retry.
+    // Claude API calls take 10+ seconds; Mailgun's webhook timeout is ~10s.
+    // Without this, Mailgun marks the delivery as failed and retries,
+    // causing duplicate replies.
+    res.writeHead(200); res.end('OK');
+
+    // Process the email asynchronously
+    (async () => {
+      try {
+        const sender = fields['sender'] || fields['from'] || '';
+        const subject = fields['subject'] || '';
+        const body = (fields['stripped-text'] || fields['body-plain'] || '').trim();
+
+        console.log(`Email from: ${sender} | Subject: ${subject}`);
+
+        if (!body) return;
+
+        // Input length cap
+        if (body.length > 2000) {
+          await sendMailgunReply(sender, `Re: ${subject}`,
+            'Your message was too long (2000 character limit). Please send a shorter question and I\'ll be happy to help!');
+          return;
+        }
+
+        // Global message cap check
+        const currentCount = getGlobalCount();
+        if (currentCount >= GLOBAL_MESSAGE_CAP) {
+          const contactMsg = CONTACT_EMAIL ? `Please contact them directly at ${CONTACT_EMAIL}` : 'Please contact them directly.';
+          await sendMailgunReply(sender, `Re: ${subject}`,
+            `This assistant has reached its conversation limit. ${contactMsg}`);
+          return;
+        }
+
+        // Get conversation history for this sender
+        const convo = getEmailConversation(sender);
+        const messages = convo.messages.slice(-20);
+        messages.push({ role: 'user', content: body });
+
+        // Call Claude
+        const response = await anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          system: SYSTEM_PROMPT,
+          messages,
+        });
+
+        const reply = response.content[0].text;
+        const inputTokens = response.usage?.input_tokens || 0;
+        const outputTokens = response.usage?.output_tokens || 0;
+        const cost = estimateCost(inputTokens, outputTokens);
+
+        // Save to conversation history
+        messages.push({ role: 'assistant', content: reply });
+        saveEmailConversation(sender, messages, convo.count + 1);
+
+        // Log to chat_log (reuse same table, ip = sender email)
+        stmtInsertChat.run(sender, body, reply, inputTokens, outputTokens, cost);
+        const count = getGlobalCount();
+        console.log(`Email reply sent | Message ${count}/${GLOBAL_MESSAGE_CAP} | tokens: ${inputTokens}+${outputTokens} | cost: $${cost.toFixed(4)}`);
+
+        // Send reply email
+        await sendMailgunReply(sender, `Re: ${subject}`, reply);
+
+        // Discord notification
+        const truncQ = body.length > 200 ? body.slice(0, 200) + '...' : body;
+        const truncA = reply.length > 300 ? reply.slice(0, 300) + '...' : reply;
+        const totalCost = db.prepare('SELECT COALESCE(SUM(cost),0) as t FROM chat_log').get().t;
+        sendDiscordNotification(
+          `**Email Interview** [${count}/${GLOBAL_MESSAGE_CAP}] | $${totalCost.toFixed(4)} total\n` +
+          `**From:** ${sender}\n` +
+          `**Q:** ${truncQ}\n` +
+          `**A:** ${truncA}\n` +
+          `_${inputTokens}+${outputTokens} tokens | $${cost.toFixed(4)}_`
+        );
+      } catch (err) {
+        console.error('Email webhook error:', err.message);
+        stmtInsertEvent.run('email_error', err.message);
+      }
+    })();
     return;
   }
 
