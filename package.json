@@ -1,0 +1,33 @@
+{
+  "name": "hireproxy",
+  "version": "1.0.0",
+  "description": "An AI-powered interview assistant that lets hiring managers chat with an AI about your qualifications",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "ai",
+    "interview",
+    "claude",
+    "anthropic",
+    "chatbot",
+    "job-search",
+    "hiring",
+    "automation",
+    "sse",
+    "nodejs"
+  ],
+  "author": "Challon Holt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PureGrain/hireproxy"
+  },
+  "homepage": "https://github.com/PureGrain/hireproxy",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "better-sqlite3": "^12.8.0",
+    "busboy": "^1.6.0"
+  }
+}
