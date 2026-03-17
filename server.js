@@ -204,6 +204,43 @@ function checkRateLimit(ip) {
   return entry.count <= RATE_LIMIT_MAX;
 }
 
+// Convert markdown to HTML for email
+function markdownToHtml(text) {
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+
+  for (const line of lines) {
+    let processed = line
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/`(.*?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:13px">$1</code>');
+    const trimmed = processed.trim();
+
+    if (trimmed.startsWith('### ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h3 style="margin:16px 0 8px;font-size:16px">${trimmed.slice(4)}</h3>`;
+    } else if (trimmed.startsWith('## ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h2 style="margin:16px 0 8px;font-size:18px">${trimmed.slice(3)}</h2>`;
+    } else if (/^[-*]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed)) {
+      if (!inList) { html += '<ul style="margin:8px 0;padding-left:20px">'; inList = true; }
+      const content = trimmed.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '');
+      html += `<li style="margin-bottom:4px">${content}</li>`;
+    } else if (trimmed === '') {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<br>';
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p style="margin:8px 0;line-height:1.6">${processed}</p>`;
+    }
+  }
+  if (inList) html += '</ul>';
+
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#333;max-width:600px">${html}</div>`;
+}
+
 // MIME types
 const MIME = {
   '.html': 'text/html',
@@ -266,6 +303,7 @@ async function sendMailgunReply(to, subject, text) {
     to,
     subject,
     text,
+    html: markdownToHtml(text),
   });
   const payload = params.toString();
 
