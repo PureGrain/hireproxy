@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Stats — HireProxy</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      padding: 40px 24px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+    .subtitle { color: #8b8fa3; font-size: 13px; margin-bottom: 30px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 30px; }
+    .card {
+      background: #161922;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card .label { font-size: 11px; color: #8b8fa3; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .card .value { font-size: 24px; font-weight: 600; color: #f0f0f0; }
+    .card .detail { font-size: 11px; color: #6366f1; margin-top: 4px; }
+
+    .section-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #f0f0f0; }
+    .tech-stack {
+      background: #161922;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .tech-stack ul { list-style: none; padding: 0; }
+    .tech-stack li {
+      padding: 8px 0;
+      border-bottom: 1px solid #1c1f2e;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .tech-stack li:last-child { border-bottom: none; }
+    .tech-stack .key { color: #8b8fa3; }
+    .tech-stack .val { color: #a5b4fc; }
+
+    .back-link { color: #6366f1; text-decoration: none; font-size: 13px; }
+    .back-link:hover { text-decoration: underline; }
+    .loading { color: #8b8fa3; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back-link">&larr; Back to Chat</a>
+    <h1 style="margin-top: 16px">System Stats</h1>
+    <p class="subtitle">Real-time metrics for this interview bot — built with observability in mind.</p>
+
+    <div class="grid" id="statsGrid">
+      <div class="card"><div class="label">Status</div><div class="value" id="s-status">Loading...</div></div>
+      <div class="card"><div class="label">Messages</div><div class="value" id="s-messages">—</div><div class="detail" id="s-remaining"></div></div>
+      <div class="card"><div class="label">API Cost</div><div class="value" id="s-cost">—</div><div class="detail">Claude Sonnet 4</div></div>
+      <div class="card"><div class="label">Tokens Used</div><div class="value" id="s-tokens">—</div><div class="detail" id="s-token-detail"></div></div>
+    </div>
+
+    <div class="section-title">Architecture</div>
+    <div class="tech-stack">
+      <ul>
+        <li><span class="key">Runtime</span><span class="val">Node.js + raw HTTP server</span></li>
+        <li><span class="key">AI Model</span><span class="val">Claude Sonnet 4 (Anthropic API)</span></li>
+        <li><span class="key">Streaming</span><span class="val">Server-Sent Events (SSE)</span></li>
+        <li><span class="key">Database</span><span class="val">SQLite (better-sqlite3)</span></li>
+        <li><span class="key">Reverse Proxy</span><span class="val">Nginx + Let's Encrypt SSL</span></li>
+        <li><span class="key">Process Manager</span><span class="val">systemd</span></li>
+        <li><span class="key">Frontend</span><span class="val">Vanilla JS — no build step, no framework</span></li>
+        <li><span class="key">Monitoring</span><span class="val">SQLite chat log, token tracking, Discord webhooks</span></li>
+        <li><span class="key">Security</span><span class="val">Passphrase gate, rate limiting, message caps</span></li>
+      </ul>
+    </div>
+
+    <div class="section-title">Design Decisions</div>
+    <div class="tech-stack">
+      <ul>
+        <li><span class="key">Context Strategy</span><span class="val">Full resume in system prompt (no RAG needed at this scale)</span></li>
+        <li><span class="key">State Management</span><span class="val">Client-side conversation history, server-side persistence via SQLite</span></li>
+        <li><span class="key">Cost Controls</span><span class="val">Session limits, global cap, rate limiting, token tracking</span></li>
+        <li><span class="key">Conversation Resume</span><span class="val">localStorage session ID + server-side conversation storage</span></li>
+        <li><span class="key">Deployment</span><span class="val">Built and deployed in one session with Claude Code CLI</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/public-stats');
+        const data = await res.json();
+        document.getElementById('s-status').textContent = data.status === 'ok' ? 'Online' : 'Degraded';
+        document.getElementById('s-messages').textContent = data.messages;
+        document.getElementById('s-remaining').textContent = `${data.remaining} remaining`;
+        document.getElementById('s-cost').textContent = data.totalCost;
+        document.getElementById('s-tokens').textContent = data.totalTokens.toLocaleString();
+        document.getElementById('s-token-detail').textContent = `${data.inputTokens.toLocaleString()} in / ${data.outputTokens.toLocaleString()} out`;
+      } catch {
+        document.getElementById('s-status').textContent = 'Error';
+      }
+    }
+    loadStats();
+    setInterval(loadStats, 15000);
+  </script>
+</body>
+</html>
