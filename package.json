@@ -4,7 +4,8 @@
   "description": "An AI-powered interview assistant that lets hiring managers chat with an AI about your qualifications",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/smoke.js"
   },
   "keywords": [
     "ai",
